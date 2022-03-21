@@ -1,0 +1,206 @@
+---
+title: "Projekt"
+author: "Tomasz Kurcaba"
+date: "25 01 2021"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+always_allow_html: yes
+---
+
+```{r results='hide', warning=FALSE, message=FALSE}
+library(plotly)
+library(lattice)
+library(latticeExtra)
+library(ggplot2)
+library(tidyverse)
+library(readr)
+```
+
+Zaladowanie danych
+``` {r}
+
+dane<-read.csv("Kurcaba_dane_surowe.csv", sep=";")
+
+```
+
+Sprawdzanie czy wystepuje brak danych. Okazuje sie, że dane sa kompletne.
+```{r}
+
+any(is.na(dane))
+sum(is.na(dane))
+
+```
+
+```{r}
+#Gdyby trzeba bylo poprawiac dane, to wpisywanie do pliku wygladalo by tak:
+write_csv(dane,"Kurcaba_dane_przeksztalcone.csv", col_names = TRUE)
+```
+
+Podstawowe statystyki dla poszczegolnych kolumn:
+``` {r}
+
+summary(dane)
+
+```
+
+
+
+Liczba klientow banku posiadajaca zarowno kredyt mieszkaniowy jak i pozyczke.
+```{r}
+
+n<-dane %>%
+  filter(loan=="yes") %>%
+    summarise( housing=="yes") %>%
+    summarise(n=n())
+x<-round((n/length(dane$loan))*100,0)
+print(paste("Procentowy udzial osob posiadajacych pozyczke i kredyt mieszkaniowy w ogolnej liczbie klientow banku to okolo", x, "%"))
+
+```
+
+Wyselekcjonowanie wieku najbogatszej osoby.
+```{r}
+
+x<-dane %>%
+  select(age, balance) %>%
+  arrange(desc(balance), age) %>%
+  select(age)
+y<-head(x$age,1)
+
+print(paste("Najbogatsza i najmlodsza osoba wsrod klientow banku jest w wieku:", y, "lat."))
+```
+
+Ponizej ciekawa statystyka pokazujaca jak bardzo malo osob utrzymujacych saldo roczne na poziomie wyzszym niz srednie (dla klientow banku), otrzymalo w spadku kredyt do splacenia. Jest to minimalny odsetek.
+```{r}
+
+x<-dane %>%
+  filter(balance > mean(balance)) 
+
+print(paste("Liczba osob ktora odziedziczyla kredyt w spadku:", length(x$age)))
+
+y<- x%>%
+  filter(default=="yes") %>%
+  summarise(temp= n())
+
+print(paste("Liczba osob z saldem rocznym wiekszym niz srednie majacych kredyt w chwili urodzenia:", y$temp))
+```
+
+
+Ponizej sprawdzamy jaka grupa zawodowa najczesciej korzysta z uslug banku.
+```{r message=FALSE}
+
+dane %>%
+  group_by(job) %>%
+  summarise('Liczba klientow pracujaca w danym zawodzie'=n()) %>%
+  arrange(desc(`Liczba klientow pracujaca w danym zawodzie`))
+
+```
+
+Poniżej sprawdzamy jaki odestek osob ktore wziely lokate w poprzedniej kampanii, stanowia osoby ktore wziely lokate podczas obecnej:
+``` {r}
+
+temp<-dane %>%
+  filter(poutcome=="success") %>%
+  summarise(n=n())
+
+temp2<-dane %>%
+  filter(poutcome=="success") %>%
+  filter(y=="yes") %>%
+  summarise(n=n())
+
+print(paste("Wsrod osob, ktore podczas ostatniej kampanii reklamowej skorzystaly z uslug banku, ", round((temp2/temp)*100,0), "% wzielo lokate podczas obecnej kampanii"))
+
+```
+
+
+
+
+**************************************************************** WYKRESY *****************************************************************
+
+
+Krótkie zapoznanie z poszczególnymi statystykami dotyczacymi klientow banku, przy uzyciu pakietu graphics. Zauważyc mozna, ze z banku najczesciej korzystaja osoby z wyksztalceniem srednim. Jesli chodzi o status cywilny to najczestsza grupa sa osoby zamezne. Natomiast dominujaca grupa zawodowa sa osoby pracujace fizycznie i osoby zatrudnione w dziale zarzadzania.
+```{r}
+
+layout(matrix(c(1,2,3,3), 2, 2, byrow = TRUE))
+pie(table(dane$education), cex=1.1, col = rainbow(4),radius = 0.9,border="white")
+title("Wyksztalcenie klientow banku")
+barplot(table(dane$marital), las = 2, cex.names = 0.9, col="aquamarine")
+title("Stan cywilny klientów banku")
+barplot(table(dane$job), cex.names = 0.9,las =3, ylab = 'Liczba osób', col=15)
+title("Zawód klientów banku")
+
+```
+
+
+
+
+Poniższy histogram pokazuje status spoleczny klientów banku oraz stopien wyksztalcenia w poszczegolnych grupach. Zauważyc można, że dominujaca grupa sa osoby bedace w malzenstwie i posiadajace wyksztalcenie srednie. Natomiast najmniej liczna grupe stanowia osoby rozwiedzione majace wyksztalcenie podstawowe.
+```{r warning=FALSE, message=FALSE}
+
+dane %>%
+plot_ly( x=~marital, color =~education, alpha=0.7, type="histogram", 
+        marker = list(line = list(color = "rgb(8,48,107)" , width = 1.5))) %>%
+  layout(title = "Status cywilny i wyksztalcenie klientów banku",
+         xaxis=list(title="Status cywilny", showgrid=FALSE), barmode="group",
+         paper_bgcolor="#FFEFD5", plot_bgcolor="#FFFACD", font=list( family="Courier New, monospace",
+                                                                     size=15, color="RebeccaPurple" ))
+
+```
+
+
+
+
+
+Wykres zależnosci rocznego salda w zależnosci od wieku, powstal z wykorzystaniem biblioteki lattice i latticeExtra. Pokazuje on wiele ciekawych zjawisk, chociazby to ze osoby w wieku powyzej 65 roku życia najczesciej posiadaja pożyczke. Ciekawy jest rownież znaczny spadek rocznego salda miedzy osobami z przedzialu wiekowego 50-60 a 60+.
+```{r}
+
+plot1<-xyplot(balance~age, data=dane,groups = loan, 
+              auto.key = list(space = "right",title = "Pożyczka",
+                                 text = c("Tak", "Nie")), pch=19)
+update(plot1,cex=0.9, xlab="Wiek", ylab="Saldo [€]", 
+       main="Wykres zależnosci rocznego salda w zależnosci od wieku",
+       par.setting =ggplot2like())
+
+
+```
+
+
+
+Poniższa zależnosci stworzona dzieki pakietowi ggplot2, pokazuje jak zmienia sie liczba rozmow podczas obecnej kampanii marketingowej w zależnosci od czasu trwania tej rozmowy, z dodatkowym podzialem na sposob kontaktu. Dodatkowe wypelnienie wykresow pokazuje czy kampania reklamowa przyniosla efekt i klient skorzystal z uslug banku biorac lokate. Ciekawe jest to ze im dluzszy czas rozmowy tym wieksze prawdopodobienstwo ze klient wezmie lokate. Widoczna jest rowniez znaczna przewaga telefonu komorkowego jako sposobu kontaktu w porownaniu z telefonem stancjonarnym. Widoczna na wykresie linia pokazuje sredni czas trwania rozmowy dla badanych danych.
+```{r warning=FALSE}
+
+temp<-dane %>% 
+  filter(contact != "unknown")
+linia <- temp %>% summarize(temp=mean(duration))
+
+ggplot(temp, aes(x=duration, fill=y)) +
+  geom_histogram(binwidth=23) + facet_grid(contact~.)+
+      labs(x="Czas trwania rozmowy [s]", y="Liczba rozmów o danym czasie")+
+      ggtitle("Liczba rozmów podczas kampani w zależnosci od czasu trwania tych rozmów")+
+      scale_fill_manual(name="Deposit",values = c("#9FE8FF", "#FF8920"))+
+      theme_grey()+ 
+      xlim(NA, 2000)+
+      geom_vline(data = linia, aes(xintercept = temp), color = "red",linetype = "dashed")+
+      theme(plot.background = element_rect("#BFBFBF"), legend.background = element_rect("#DFDFDF"))
+    
+
+```
+
+
+Poniższy wykres zrealizowany z pomoca pakietu ggplot2, pokazuje ciekawa zaleznosc miedzy posiadaniem kredytu mieszkaniowego a posiadanym wyksztalceniem. Zauwazyc mozemy znaczna przewage liczby posiadaczy kredytu mieszkaniowego w stosunku do tych, którzy nie posiadaja kredytu wsrod osob majacych wyksztalcenie drugiego stopnia.
+```{r}
+
+ggplot(dane, aes(x=education, fill=housing)) + 
+  geom_bar(position="dodge")+
+  ggtitle("Zaleznosc posiadania kredytu mieszkaniowego od poziomu wyksztalcenia")+
+  labs(x="Wyksztalcenie", y="Liczba osob")+
+  theme(legend.position = c(.95, .95), legend.justification = c("right", "top"),
+        legend.background = element_rect("#FFE7FF"),
+        plot.background=element_rect("#FFD7DC"),plot.title = element_text(size = rel(1.1), face="bold"),
+        panel.background = element_rect("#FFE7EC"),
+        legend.title = element_text(face = "bold"), axis.title.x = element_text( size=11, face="bold"),
+        axis.title.y = element_text( size=11, face="bold"))
+
+```
+
